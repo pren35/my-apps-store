@@ -1,0 +1,91 @@
+# Builds your own F-Droid app store from the newest APK release of every repo you own.
+# Add this store once in F-Droid; new apps and updates show up there by themselves.
+# Nothing installs on your phone until you tap Install or Update in F-Droid.
+name: Update app store
+
+on:
+  schedule:
+    - cron: "47 10 * * *"     # daily, 10:47 UTC (after the Bitwarden build)
+  workflow_dispatch:          # lets you press "Run workflow" by hand
+    inputs:
+      force:
+        description: "Republish even if no app changed"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write             # needed to update the store's release files
+
+concurrency:
+  group: store
+  cancel-in-progress: false
+
+env:
+  OWNER: ${{ github.repository_owner }}
+  STORE_REPO: ${{ github.repository }}
+  STORE_TAG: repo
+  STORE_URL: https://github.com/${{ github.repository }}/releases/download/repo
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Get this repo
+        uses: actions/checkout@v4
+
+      - name: Install F-Droid tools
+        run: |
+          pip install --quiet fdroidserver
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          echo "APKSIGNER=$ANDROID_HOME/build-tools/$BT/apksigner" >> "$GITHUB_ENV"
+
+      - name: Restore store signing key
+        env:
+          STORE_KEY: ${{ secrets.STORE_KEY }}
+        run: |
+          [ -n "$STORE_KEY" ] || { echo "::error::Secret STORE_KEY is missing. Paste the whole store-key.txt file into it."; exit 1; }
+          CLEAN=$(printf '%s\n' "$STORE_KEY" | tr -d ' \r\t')
+          PW=$(printf '%s\n' "$CLEAN" | awk 'f && NF {print; exit} $0=="STORE_KEY_PASSWORD" {f=1}')
+          KS=$(printf '%s\n' "$CLEAN" | awk 'f && NF {printf "%s", $0} $0=="STORE_KEY_BASE64" {f=1}')
+          echo "Key data: ${#KS} characters. Password: ${#PW} characters (expected 32)."
+          printf '%s' "$KS" | base64 -d > "$RUNNER_TEMP/store.p12" && [ -n "$PW" ] \
+            || { echo "::error::Secret STORE_KEY is not valid. Paste the whole store-key.txt file again (Ctrl+A, Ctrl+C)."; exit 1; }
+          echo "::add-mask::$PW"
+          echo "KEY_PASS=$PW" >> "$GITHUB_ENV"
+          echo "KEY_FILE=$RUNNER_TEMP/store.p12" >> "$GITHUB_ENV"
+
+      - name: Collect the newest APK of every app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/store" && cd "$RUNNER_TEMP/store"
+          bash "$GITHUB_WORKSPACE/scripts/update-store.sh"
+
+      - name: Publish the store
+        working-directory: ${{ runner.temp }}/store
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$STORE_TAG" -R "$STORE_REPO" >/dev/null 2>&1; then
+            gh release create "$STORE_TAG" -R "$STORE_REPO" --latest=false \
+              --title "App store files (used by F-Droid, do not delete)" \
+              --notes "F-Droid reads the app list and APKs from here. Updated automatically by the Update app store workflow."
+          fi
+          OLD=$(gh release view "$STORE_TAG" -R "$STORE_REPO" --json assets \
+                -q '.assets[] | select(.name | endswith(".apk")) | "\(.name) \(.size)"' | sort)
+          NEW=$(for f in repo/*.apk; do echo "$(basename "$f") $(stat -c %s "$f")"; done | sort)
+          HAS_INDEX=$(gh release view "$STORE_TAG" -R "$STORE_REPO" --json assets -q '.assets[].name' | grep -cx entry.jar || true)
+          if [ "$OLD" = "$NEW" ] && [ "$HAS_INDEX" = 1 ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "No app changed - nothing to publish."
+            exit 0
+          fi
+          # 1. New APKs first, 2. then the app list, 3. then remove APKs that are no longer listed.
+          for f in repo/*.apk; do
+            grep -qx "$(basename "$f") $(stat -c %s "$f")" <<<"$OLD" || gh release upload "$STORE_TAG" "$f" -R "$STORE_REPO" --clobber
+          done
+          find repo -maxdepth 1 -type f ! -name '*.apk' -print0 | xargs -0 gh release upload "$STORE_TAG" -R "$STORE_REPO" --clobber
+          for name in $(cut -d' ' -f1 <<<"$OLD"); do
+            [ -e "repo/$name" ] || gh release delete-asset "$STORE_TAG" "$name" -R "$STORE_REPO" --yes
+          done
+          echo "Store published at $STORE_URL"
