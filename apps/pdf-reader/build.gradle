@@ -5,6 +5,8 @@ plugins {
 android {
     namespace 'io.github.pren35.pdfreader'
     compileSdk 36
+    // The PDF viewer needs SDK extension 19 to compile; on phones it also runs without it (Android 9+).
+    compileSdkExtension 19
 
     defaultConfig {
         applicationId 'io.github.pren35.pdfreader'
