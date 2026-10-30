@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Collects the newest APK from every repo of $OWNER and builds a signed F-Droid repo in ./repo.
-# Needs: OWNER, STORE_REPO (this repo, owner/name), STORE_URL, KEY_FILE, KEY_PASS, APKSIGNER, gh logged in.
+# Needs: OWNER, STORE_REPO (this repo, owner/name), STORE_URL, KEY_FILE, KEY_PASS, APKSIGNER, APPS_DIR, gh logged in.
 set -euo pipefail
 
 rm -rf repo metadata tmp archive downloads
@@ -24,20 +24,29 @@ printf 'My apps:\n  name: My apps\n' > config/categories.yml
 gh api --paginate "users/$OWNER/repos?per_page=100&type=owner" \
   -q '.[] | select(.archived | not) | select(.private | not) | [.full_name, .html_url, (.description // "")] | @tsv' |
 while IFS=$'\t' read -r full url desc; do
-  [ "$full" = "$STORE_REPO" ] && continue
-  apks=$(gh release view -R "$full" --json assets -q '.assets[].name | select(endswith(".apk"))' 2>/dev/null || true)
+  # Apps built from this repo's apps/ folder live in its "apps" release; other repos use their latest release.
+  tag=()
+  [ "$full" = "$STORE_REPO" ] && tag=(apps)
+  apks=$(gh release view "${tag[@]}" -R "$full" --json assets -q '.assets[].name | select(endswith(".apk"))' 2>/dev/null || true)
   if [ -z "$apks" ]; then
     echo "  $full: no APK in its latest release, skipped"
     continue
   fi
   dir="downloads/${full#*/}"
-  gh release download -R "$full" -p '*.apk' -D "$dir"
+  gh release download "${tag[@]}" -R "$full" -p '*.apk' -D "$dir"
   for f in "$dir"/*.apk; do
     name=$(basename "$f")
     [ -e "repo/$name" ] && name="${full#*/}-$name"
     mv "$f" "repo/$name"
     echo "  $full: added $name"
-    python3 - "$name" "$full" "$url" "$desc" <<'PY'
+    app_url=$url
+    app_desc=$desc
+    if [ "$full" = "$STORE_REPO" ]; then
+      app="${name%-*}"                       # pdf-reader-1.0.apk -> pdf-reader
+      app_url="$url/tree/main/apps/$app"
+      app_desc=$(head -1 "$APPS_DIR/$app/description.txt" 2>/dev/null || true)
+    fi
+    python3 - "$name" "$full" "$app_url" "$app_desc" <<'PY'
 import json, sys
 name, full, url, desc = sys.argv[1:]
 s = json.load(open("sources.json"))

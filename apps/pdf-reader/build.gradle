@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application' version '8.13.0'
+}
+
+android {
+    namespace 'io.github.pren35.pdfreader'
+    compileSdk 36
+    // The PDF viewer needs SDK extension 19 to compile; on phones it also runs without it (Android 9+).
+    compileSdkExtension 19
+
+    defaultConfig {
+        applicationId 'io.github.pren35.pdfreader'
+        minSdk 28
+        targetSdk 34
+        // Raise both numbers for every new version, or phones won't see the update.
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // Don't embed the Google-encrypted dependency list in the APK.
+    dependenciesInfo {
+        includeInApk false
+        includeInBundle false
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.13.0'
+    // Open-source PDF viewer: smooth scrolling, pinch zoom, search, text selection. Works offline.
+    implementation 'androidx.pdf:pdf-viewer-fragment:1.0.0-beta01'
+}
+
+// Keep Google Play Services, ML Kit and Firebase out of the app entirely.
+configurations.configureEach {
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.mlkit'
+    exclude group: 'com.google.firebase'
+}

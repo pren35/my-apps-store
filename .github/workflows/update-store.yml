@@ -64,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/store" && cd "$RUNNER_TEMP/store"
-          bash "$GITHUB_WORKSPACE/scripts/update-store.sh"
+          APPS_DIR="$GITHUB_WORKSPACE/apps" bash "$GITHUB_WORKSPACE/scripts/update-store.sh"
 
       - name: Check whether anything changed
         id: check
