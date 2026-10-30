@@ -51,7 +51,7 @@ ls repo/*.apk >/dev/null 2>&1 || { echo "::error::No APKs found in any repo of $
 
 fdroid update --create-metadata
 python3 "$(dirname "$0")/fill-metadata.py"
-# Forget the first pass so the final index has no "diff" files (the store host is a flat file list).
+# Forget the first pass so the final index has no "diff" files (a fresh store each run).
 rm -rf tmp/repo_*.json repo/diff
 fdroid update
 rm -rf repo/status repo/diff
