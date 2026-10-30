@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">PDF Reader</string>
+    <string name="open_pdf">Open PDF</string>
+    <string name="recent">Recent</string>
+    <string name="no_recent">PDFs you open will be listed here.\n\nThis app has no internet access, so your files never leave your phone.</string>
+    <string name="search">Search</string>
+    <string name="share">Share</string>
+    <string name="removed_from_recent">Removed from recent</string>
+    <string name="cannot_open">Can\'t open this file any more. It was removed from recent.</string>
+</resources>

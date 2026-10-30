@@ -12,8 +12,9 @@ for pkg, versions in index["packages"].items():
     meta["Categories"] = ["My apps"]
     meta["AuthorName"] = info["owner"]
     meta["SourceCode"] = info["url"]
-    meta["IssueTracker"] = info["url"] + "/issues"
-    meta["Changelog"] = info["url"] + "/releases"
+    if "/tree/" not in info["url"]:
+        meta["IssueTracker"] = info["url"] + "/issues"
+        meta["Changelog"] = info["url"] + "/releases"
     if info.get("description"):
         meta["Summary"] = info["description"][:80]
     yaml.safe_dump(meta, open(path, "w"), sort_keys=True, allow_unicode=True)
