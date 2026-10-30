@@ -14,7 +14,9 @@ on:
         default: false
 
 permissions:
-  contents: write             # needed to update the store's release files
+  contents: read
+  pages: write                # needed to publish the store on GitHub Pages
+  id-token: write
 
 concurrency:
   group: store
@@ -23,13 +25,15 @@ concurrency:
 env:
   OWNER: ${{ github.repository_owner }}
   STORE_REPO: ${{ github.repository }}
-  STORE_TAG: repo
-  STORE_URL: https://github.com/${{ github.repository }}/releases/download/repo
+  STORE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/repo
 
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}repo
     steps:
       - name: Get this repo
         uses: actions/checkout@v4
@@ -62,30 +66,30 @@ jobs:
           mkdir -p "$RUNNER_TEMP/store" && cd "$RUNNER_TEMP/store"
           bash "$GITHUB_WORKSPACE/scripts/update-store.sh"
 
-      - name: Publish the store
+      - name: Check whether anything changed
+        id: check
         working-directory: ${{ runner.temp }}/store
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$STORE_TAG" -R "$STORE_REPO" >/dev/null 2>&1; then
-            gh release create "$STORE_TAG" -R "$STORE_REPO" --latest=false \
-              --title "App store files (used by F-Droid, do not delete)" \
-              --notes "F-Droid reads the app list and APKs from here. Updated automatically by the Update app store workflow."
-          fi
-          OLD=$(gh release view "$STORE_TAG" -R "$STORE_REPO" --json assets \
-                -q '.assets[] | select(.name | endswith(".apk")) | "\(.name) \(.size)"' | sort)
+          # Compare the APKs with what the live store lists (file name and size).
+          OLD=$(curl -sf "$STORE_URL/index-v1.json" \
+                | python3 -c "import json,sys; [print(v['apkName'], v['size']) for p in json.load(sys.stdin)['packages'].values() for v in p]" \
+                | sort || true)
           NEW=$(for f in repo/*.apk; do echo "$(basename "$f") $(stat -c %s "$f")"; done | sort)
-          HAS_INDEX=$(gh release view "$STORE_TAG" -R "$STORE_REPO" --json assets -q '.assets[].name' | grep -cx entry.jar || true)
-          if [ "$OLD" = "$NEW" ] && [ "$HAS_INDEX" = 1 ] && [ "${{ inputs.force }}" != "true" ]; then
+          if [ "$OLD" = "$NEW" ] && [ "${{ inputs.force }}" != "true" ]; then
             echo "No app changed - nothing to publish."
-            exit 0
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-          # 1. New APKs first, 2. then the app list, 3. then remove APKs that are no longer listed.
-          for f in repo/*.apk; do
-            grep -qx "$(basename "$f") $(stat -c %s "$f")" <<<"$OLD" || gh release upload "$STORE_TAG" "$f" -R "$STORE_REPO" --clobber
-          done
-          find repo -maxdepth 1 -type f ! -name '*.apk' -print0 | xargs -0 gh release upload "$STORE_TAG" -R "$STORE_REPO" --clobber
-          for name in $(cut -d' ' -f1 <<<"$OLD"); do
-            [ -e "repo/$name" ] || gh release delete-asset "$STORE_TAG" "$name" -R "$STORE_REPO" --yes
-          done
-          echo "Store published at $STORE_URL"
+          mkdir -p site && mv repo site/repo
+
+      - name: Upload the store
+        if: steps.check.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/store/site
+
+      - name: Publish the store
+        if: steps.check.outputs.publish == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v4

@@ -5,7 +5,7 @@ APK from each repo's latest release, and lists them here. A new app appears auto
 once its repo has a release with an `.apk` file.
 
 **Store address (add this once in F-Droid):**
-`https://github.com/pren35/my-apps-store/releases/download/repo`
+`https://pren35.github.io/my-apps-store/repo`
 
 Nothing installs by itself: F-Droid shows new versions, and you tap **Update** to install them.
 Keep F-Droid's *Settings → Automatically install updates* switched **off** to keep it that way.
@@ -14,7 +14,8 @@ Keep F-Droid's *Settings → Automatically install updates* switched **off** to 
 - `.github/workflows/update-store.yml` – runs daily at 10:47 UTC, or by hand:
   Actions → Update app store → Run workflow.
 - `scripts/update-store.sh`, `scripts/fill-metadata.py` – collect the APKs and build the store.
-- The store files live in the release named **repo**. Don't delete it.
+- The store is published on GitHub Pages (Settings → Pages → Source: **GitHub Actions**).
+  F-Droid can't follow GitHub's download redirects, so release files can't be used directly.
 
 ## Secret (Settings → Secrets and variables → Actions)
 - `STORE_KEY` – the whole contents of `store-key.txt` (signs the store's app list, so F-Droid
